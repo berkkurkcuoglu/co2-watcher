@@ -27,17 +27,19 @@ public class SensorsService {
         var sensor = getSensor(sensorId);
         var measurement = createMeasurement(measurementDto);
         sensor.addMeasurement(measurement);
-        if (measurementDto.co2() >= CO2_THRESHOLD) {
+        if (measurementDto.co2() < CO2_THRESHOLD) {
+            if (sensor.getStatus().equals(Status.ALERT) && canAlertBeRemoved(sensor.getMeasurements())) {
+                sensor.getAlerts().get(sensor.getAlerts().size() - 1).setEndTime(measurementDto.time());
+                sensor.setStatus(Status.OK);
+            } else if (sensor.getStatus().equals(Status.WARN)) {
+                sensor.setStatus(Status.OK);
+            }
+        } else if (!sensor.getStatus().equals(Status.ALERT)) {
             if (isAlertRequired(sensor.getMeasurements())) {
                 sensor.addAlert(Alert.builder().startTime(measurementDto.time()).build());
                 sensor.setStatus(Status.ALERT);
             } else {
                 sensor.setStatus(Status.WARN);
-            }
-        } else {
-            if (sensor.getStatus().equals(Status.ALERT) && canAlertBeRemoved(sensor.getMeasurements())) {
-                sensor.getAlerts().get(sensor.getAlerts().size() - 1).setEndTime(measurementDto.time());
-                sensor.setStatus(Status.OK);
             }
         }
         sensorsRepository.save(sensor);

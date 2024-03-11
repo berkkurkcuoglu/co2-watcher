@@ -14,8 +14,7 @@ import java.time.OffsetDateTime;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,6 +54,7 @@ class SensorsServiceTest {
         oldMeasurements.add(Measurement.builder().co2(2000).time(OffsetDateTime.now()).build());
         var mockSensor = Sensor.builder()
                 .measurements(oldMeasurements)
+                .status(Status.OK)
                 .build();
         var lastMeasurementTime = OffsetDateTime.now();
 
@@ -71,6 +71,38 @@ class SensorsServiceTest {
         assertEquals(Status.ALERT, result.getStatus());
         assertEquals(1, result.getAlerts().size());
         assertEquals(lastMeasurementTime, result.getAlerts().get(0).getStartTime());
+    }
+
+    @Test
+    void saveMeasurement_should_leave_sensor_status_at_alert_when_co2_is_not_lower_than_2000_for_3_consecutive_times() {
+        var oldMeasurements = new ArrayList<Measurement>();
+        oldMeasurements.add(Measurement.builder().co2(2000).time(OffsetDateTime.now().minusDays(1)).build());
+        oldMeasurements.add(Measurement.builder().co2(2000).time(OffsetDateTime.now().minusDays(1)).build());
+        oldMeasurements.add(Measurement.builder().co2(2000).time(OffsetDateTime.now().minusDays(1)).build());
+        oldMeasurements.add(Measurement.builder().co2(2000).time(OffsetDateTime.now()).build());
+        oldMeasurements.add(Measurement.builder().co2(100).time(OffsetDateTime.now()).build());
+        var existingAlerts = new ArrayList<Alert>();
+        existingAlerts.add(Alert.builder().startTime(OffsetDateTime.now()).build());
+        var mockSensor = Sensor.builder()
+                .status(Status.ALERT)
+                .measurements(oldMeasurements)
+                .alerts(existingAlerts)
+                .build();
+        var lastMeasurementTime = OffsetDateTime.now();
+
+        when(sensorsRepository.findById(any())).thenReturn(Optional.of(mockSensor));
+        when(measurementsRepository.save(any())).thenReturn(Measurement.builder().co2(2000).time(lastMeasurementTime).build());
+
+        sensorsService.saveMeasurement(UUID.randomUUID(), new MeasurementDto(2000, lastMeasurementTime));
+
+        ArgumentCaptor<Sensor> captor = ArgumentCaptor.forClass(Sensor.class);
+        verify(sensorsRepository).save(captor.capture());
+        var result = captor.getValue();
+
+        assertEquals(6, result.getMeasurements().size());
+        assertEquals(Status.ALERT, result.getStatus());
+        assertEquals(1, result.getAlerts().size());
+        assertNull(result.getAlerts().get(0).getEndTime());
     }
 
     @Test
